@@ -1,0 +1,18 @@
+syntax = "proto3";
+package tasks;
+
+service Task {
+	rpc SendTask (TaskRequest) returns (TaskResponse);
+}
+
+message TaskRequest {
+	uint32 num_tasks = 1;	
+}
+
+message TaskResponse {
+	string file_name = 1;
+	uint32 task_num = 2;
+	uint32 n_reduce = 3;
+	uint32 n_map = 4;
+	bool is_map = 5;
+}

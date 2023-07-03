@@ -1,5 +1,5 @@
 [package]
-name = "mr-little"
+name = "mapreduce"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,3 +7,10 @@ edition = "2021"
 
 [dependencies]
 colored = "2.0.0"
+tonic = "0.7"  # grpc impl for rust
+prost = "0.10"  # protobuf impl for rust
+tokio = { version = "1.29.1", features = ["rt-multi-thread"] }
+
+[build-dependencies]
+prost-build = "0.10"
+tonic-build = "0.7"
