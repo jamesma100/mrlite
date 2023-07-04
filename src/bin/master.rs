@@ -40,12 +40,18 @@ impl Task for TaskService {
 pub struct Master {
 	name: String,
 	done: bool,
+	n_map: u32,
+	n_reduce: u32,
+	map_tasks_left: u32, 
 }
 impl Master {
-	pub fn new(name: String, done: bool) -> Master {
+	pub fn new(name: String, done: bool, n_map: u32, n_reduce: u32, map_tasks_left:u32) -> Master {
 		Master {
 			name: name,
 			done: done,
+			n_map: n_map,
+			n_reduce: n_reduce,
+			map_tasks_left: map_tasks_left,
 		}
 	}
 	pub fn done(&self) -> bool {
@@ -54,6 +60,7 @@ impl Master {
 
 	pub async fn boot(&self) -> Result<(), Box<dyn std::error::Error>> {
 		let addr = "[::1]:50051".parse()?;
+		println!("addr: {}", addr);
 		let task_service = TaskService::default();
 
 		Server::builder()
@@ -64,14 +71,18 @@ impl Master {
 	}
 } 
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	println!("{}", "starting master".bright_red());
 
 	let master: Master = Master::new(
 		"mymaster".to_string(),
 		false,
+		10,
+		10,
+		10,
 	);
-	master.boot();
+	master.boot().await;
 	println!("{}: {}", "master created".bright_red(), master.name.bright_red());
 	
 	let five_seconds = time::Duration::from_millis(5000);
