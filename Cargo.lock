@@ -483,6 +483,7 @@ name = "mapreduce"
 version = "0.1.0"
 dependencies = [
  "colored",
+ "mongo_utils",
  "prost",
  "prost-build",
  "tokio",
@@ -527,6 +528,10 @@ dependencies = [
  "wasi",
  "windows-sys",
 ]
+
+[[package]]
+name = "mongo_utils"
+version = "0.1.0"
 
 [[package]]
 name = "multimap"
