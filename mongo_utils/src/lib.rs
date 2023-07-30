@@ -13,7 +13,7 @@ struct MasterState {
 }
 
 // creates a mongodb collection
-async fn create_collection(client: &Client, db_name: &str, coll_name: &str) {
+pub async fn create_collection(client: &Client, db_name: &str, coll_name: &str) {
     let db = client.database(db_name);
     for collection_name in db.list_collection_names(None).await.unwrap() {
         if collection_name == coll_name {
@@ -25,14 +25,14 @@ async fn create_collection(client: &Client, db_name: &str, coll_name: &str) {
 }
 
 // drops a mongodb collection
-async fn drop_collection(client: &Client, db_name: &str, coll_name: &str) {
+pub async fn drop_collection(client: &Client, db_name: &str, coll_name: &str) {
     let db = client.database(db_name);
     let coll = db.collection::<mongodb::bson::Document>(coll_name);
     coll.drop(None);
 }
 
 // initializes master state
-async fn init_state(client: &Client, db_name: &str, coll_name: &str, record_name: &str, n_map: i64, n_reduce: i64) {
+pub async fn init_state(client: &Client, db_name: &str, coll_name: &str, record_name: &str, n_map: i64, n_reduce: i64) {
     let db = client.database(db_name);
     let coll = db.collection(coll_name);
 
@@ -48,7 +48,7 @@ async fn init_state(client: &Client, db_name: &str, coll_name: &str, record_name
 }
 
 // gets value of some field of the current state
-async fn get_val(client: &Client, db_name: &str, coll_name: &str, record_name: &str, field: &str) -> Option<i64> {
+pub async fn get_val(client: &Client, db_name: &str, coll_name: &str, record_name: &str, field: &str) -> Option<i64> {
     let db = client.database(db_name);
     let coll = db.collection::<mongodb::bson::Document>(coll_name);
 
@@ -64,7 +64,7 @@ async fn get_val(client: &Client, db_name: &str, coll_name: &str, record_name: &
 }
 
 // updates some integer count in the current state
-async fn update_count(client: &Client, db_name: &str, coll_name: &str, record_name: &str, field: &str, new_val: i64) {
+pub async fn update_count(client: &Client, db_name: &str, coll_name: &str, record_name: &str, field: &str, new_val: i64) {
     let db = client.database(db_name);
     let coll = db.collection::<mongodb::bson::Document>(coll_name);
 

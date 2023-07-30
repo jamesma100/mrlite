@@ -10,10 +10,11 @@ colored = "2.0.0"
 tonic = "0.7"  # grpc impl for rust
 prost = "0.10"  # protobuf impl for rust
 tokio = { version = "1.29.1", features = ["rt-multi-thread"] }
+mongodb = "2.6.0"
+mongo_utils = { path = "mongo_utils" }
 
 [build-dependencies]
 prost-build = "0.10"
 tonic-build = "0.7"
 
 [dev-dependencies]
-mongo_utils = { path = "mongo_utils" }
