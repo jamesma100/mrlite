@@ -6,5 +6,7 @@ Program begins with the boot of a master process, which initializes and keeps tr
 ## Getting started
 ### Start local mongo
 ```
-if [[ -d /tmp/mongo-testdb ]]; then rm -rf /tmp/mongo-testdb; fi && mkdir -p /tmp/mongo-testdb && mongod --dbpath /tmp/mongo-testdb;
+if [[ -d /tmp/mongo-testdb ]]; then rm -rf /tmp/mongo-testdb; fi && \
+mkdir -p /tmp/mongo-testdb && \
+mongod --dbpath /tmp/mongo-testdb
 ```
