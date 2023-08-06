@@ -37,7 +37,6 @@ impl Worker {
 
 #[tokio::main]
 async fn main() {
-    println!("hello world");
     // initialize worker
     let worker_name = format!("{}-{}", "worker", process::id());
     let worker: Worker = Worker::new(worker_name, false);

@@ -1,7 +1,10 @@
 extern crate mongo_utils;
 
 use colored::Colorize;
-use mongo_utils::create_collection;
+use mongo_utils::{
+    create_collection, drop_collection, get_task, get_val, init_map_tasks, init_master_state,
+    update_assigned, update_count,
+};
 use mongodb::bson::doc;
 use mongodb::{options::ClientOptions, Client};
 use std::collections::HashMap;
@@ -11,7 +14,7 @@ use tasks::task_server::{Task, TaskServer};
 use tasks::{TaskRequest, TaskResponse};
 use tonic::{transport::Server, Request, Response, Status};
 
-// types tonic generated based on proto/tasks.proto
+// Types tonic generated based on proto/tasks.proto
 // so the `use` statements can reference them
 pub mod tasks {
     tonic::include_proto!("tasks");
@@ -28,61 +31,57 @@ impl Task for TaskService {
     ) -> Result<Response<TaskResponse>, Status> {
         println!("master got a request: {:?}", request);
 
-        let req = request.into_inner();
+        // Initialize client handler
+        let addr = "[::1]:50051";
+        let client_options = ClientOptions::parse("mongodb://localhost:27017")
+            .await
+            .unwrap();
+        let client = Client::with_options(client_options).unwrap();
+        let db = client.database("mapreduce");
 
-        let reply = TaskResponse {
-            file_name: "sample_file".to_string(),
-            task_num: 1,
-            n_reduce: 3,
-            n_map: 4,
-            is_map: true,
-        };
+        // Get existing map tasks from database
+        let coll = db.collection::<mongodb::bson::Document>("map_tasks");
 
-        Ok(Response::new(reply))
+        // Loop over all tasks looking for an idle one to assign
+        let distinct = coll.distinct("name", None, None).await;
+        for key in distinct.unwrap() {
+            let res =
+                mongo_utils::get_task(&client, "mapreduce", "map_tasks", key.as_str().unwrap())
+                    .await;
+            println!("res is {:?}", res);
+
+            // If not assigned, hand out this task
+            if !(res.1.unwrap()) {
+                let response_filename = &res.0.unwrap();
+                let req = request.into_inner();
+                let reply = TaskResponse {
+                    file_name: response_filename.to_string(),
+                    is_assigned: false,
+                    is_map: true,
+                };
+                update_assigned(&client, "mapreduce", "map_tasks", response_filename, true).await;
+
+                return Ok(Response::new(reply));
+            } else {
+                continue;
+            }
+        }
+
+        // No avaialble tasks found; either mapreduce is done or all map tasks are still in progress
+        return Err(Status::not_found("No valid task found."));
     }
 }
 
 #[derive(Debug)]
 pub struct Master {
     name: String,
-    done: bool,
-    n_map: u32,
-    n_reduce: u32,
-    map_tasks_left: u32,
-    // hashmap for storing the status of tasks / files
-    // 0: unassigned
-    // 1: assigned
-    // tuple def: (assigned, is_map)
-    map_tasks: HashMap<String, (bool, bool)>,
-    reduce_tasks: HashMap<String, (bool, bool)>,
 }
 impl Master {
-    pub fn new(
-        name: String,
-        done: bool,
-        n_map: u32,
-        n_reduce: u32,
-        map_tasks_left: u32,
-        map_tasks: HashMap<String, (bool, bool)>,
-        reduce_tasks: HashMap<String, (bool, bool)>,
-    ) -> Master {
-        Master {
-            name: name,
-            done: done,
-            n_map: n_map,
-            n_reduce: n_reduce,
-            map_tasks_left: map_tasks_left,
-            map_tasks: map_tasks,
-            reduce_tasks: reduce_tasks,
-        }
+    pub fn new(name: String) -> Master {
+        Master { name: name }
     }
-    pub fn done(&self) -> bool {
-        self.done
-    }
-
     pub async fn boot(&self) -> Result<(), Box<dyn std::error::Error>> {
         let addr = "[::1]:50051".parse()?;
-        println!("addr: {}", addr);
         let task_service = TaskService::default();
 
         Server::builder()
@@ -106,18 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         map_tasks.insert(args[i].clone(), (false, true));
     }
 
-    println!("{}", "starting master".bright_red());
-
-    let mut master: Master = Master::new(
-        "mymaster".to_string(),
-        false,
-        n_map,
-        n_reduce,
-        n_map,
-        map_tasks,
-        reduce_tasks,
-    );
-    println!("printing master: {:?}", master);
+    let mut master: Master = Master::new("mymaster".to_string());
     let addr = "[::1]:50051";
 
     let client_options = ClientOptions::parse("mongodb://localhost:27017")
@@ -125,22 +113,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
     let client = Client::with_options(client_options).unwrap();
 
-    let db_name = "my_database";
-    let coll_name = "my_collection";
+    mongo_utils::init_master_state(
+        &client,
+        "mapreduce",
+        "state",
+        "current_master_state",
+        n_map,
+        n_reduce,
+    )
+    .await;
+    mongo_utils::init_map_tasks(&client, "mapreduce", "map_tasks", &map_tasks).await;
 
-    mongo_utils::create_collection(&client, db_name, coll_name).await;
     master.boot().await;
-    println!(
-        "{}: {}",
-        "master created".bright_red(),
-        master.name.bright_red()
-    );
 
+    // Poll master every 5 seconds to check completion status
     let five_seconds = time::Duration::from_millis(5000);
-    while !master.done() {
-        println!("master not done!");
-        thread::sleep(five_seconds);
-    }
+    // while !master.done() {
+    //     println!("master not done!");
+    //     thread::sleep(five_seconds);
+    // }
 
     Ok(())
 }

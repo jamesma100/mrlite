@@ -1,18 +1,19 @@
 use mongodb::bson::doc;
 use mongodb::{Client, options::ClientOptions};
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-// struct representing shared state of the mapreduce system
+// Struct representing shared state of the mapreduce system
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct MasterState {
     name: String,
-    n_map: i64,
-    n_reduce: i64,
-    map_tasks_left: i64,
+    n_map: u32,
+    n_reduce: u32,
+    map_tasks_left: u32,
 }
 
-// creates a mongodb collection
+// Creates a mongodb collection
 pub async fn create_collection(client: &Client, db_name: &str, coll_name: &str) {
     let db = client.database(db_name);
     for collection_name in db.list_collection_names(None).await.unwrap() {
@@ -24,15 +25,15 @@ pub async fn create_collection(client: &Client, db_name: &str, coll_name: &str) 
     db.create_collection(coll_name, None).await.unwrap();
 }
 
-// drops a mongodb collection
+// Drops a mongodb collection
 pub async fn drop_collection(client: &Client, db_name: &str, coll_name: &str) {
     let db = client.database(db_name);
     let coll = db.collection::<mongodb::bson::Document>(coll_name);
-    coll.drop(None);
+    coll.drop(None).await;
 }
 
-// initializes master state
-pub async fn init_state(client: &Client, db_name: &str, coll_name: &str, record_name: &str, n_map: i64, n_reduce: i64) {
+// Initializes master state
+pub async fn init_master_state(client: &Client, db_name: &str, coll_name: &str, record_name: &str, n_map: u32, n_reduce: u32) {
     let db = client.database(db_name);
     let coll = db.collection(coll_name);
 
@@ -47,8 +48,24 @@ pub async fn init_state(client: &Client, db_name: &str, coll_name: &str, record_
     ).await.unwrap();
 }
 
-// gets value of some field of the current state
-pub async fn get_val(client: &Client, db_name: &str, coll_name: &str, record_name: &str, field: &str) -> Option<i64> {
+// Initializes map tasks state
+pub async fn init_map_tasks(client: &Client, db_name: &str, coll_name: &str, map_tasks: &HashMap<String, (bool, bool)>) {
+    let db = client.database(db_name);
+    let coll = db.collection::<mongodb::bson::Document>(coll_name);
+
+    let mut vec = Vec::new();
+    for (task_name, task_state) in map_tasks {
+        vec.push(doc! {
+            "name": task_name.to_string(),
+            "is_assigned": false,
+            "is_map": true,
+        })
+    }
+    coll.insert_many(vec, None).await.unwrap();
+}
+
+// Gets value of some integer field of the current (master) state
+pub async fn get_val(client: &Client, db_name: &str, coll_name: &str, record_name: &str, field: &str) -> Option<i32> {
     let db = client.database(db_name);
     let coll = db.collection::<mongodb::bson::Document>(coll_name);
 
@@ -57,14 +74,32 @@ pub async fn get_val(client: &Client, db_name: &str, coll_name: &str, record_nam
 
     match res {
         Some(state) => {
-            state.get(field.to_string()).unwrap().as_i64()
+            state.get(field.to_string()).unwrap().as_i32()
         },
         None => None
     }
 }
 
-// updates some integer count in the current state
-pub async fn update_count(client: &Client, db_name: &str, coll_name: &str, record_name: &str, field: &str, new_val: i64) {
+// Returns a task tuple given a task name
+pub async fn get_task(client: &Client, db_name: &str, coll_name: &str, task_name: &str) -> (Option<String>, Option<bool>, Option<bool>) {
+    let db = client.database(db_name);
+    let coll = db.collection::<mongodb::bson::Document>(coll_name);
+
+    let filter = doc! {"name": task_name.to_string()};
+    let res = coll.find_one(Some(filter), None).await.unwrap();
+
+    match res {
+        Some(state) => {(
+                Some(task_name.to_string()),
+                state.get("is_assigned".to_string()).unwrap().as_bool(),
+                state.get("is_map".to_string()).unwrap().as_bool(),
+        )},
+        None => (None, None, None)
+    }
+}
+
+// Updates some integer count in the current state
+pub async fn update_count(client: &Client, db_name: &str, coll_name: &str, record_name: &str, field: &str, new_val: u32) {
     let db = client.database(db_name);
     let coll = db.collection::<mongodb::bson::Document>(coll_name);
 
@@ -73,6 +108,17 @@ pub async fn update_count(client: &Client, db_name: &str, coll_name: &str, recor
     coll.update_one(filter, update, None).await.unwrap();
 }
 
+// Updates the assigned value in some task
+pub async fn update_assigned(client: &Client, db_name: &str, coll_name: &str, task_name: &str, new_val: bool) {
+    let db = client.database(db_name);
+    let coll = db.collection::<mongodb::bson::Document>(coll_name);
+
+    let filter = doc! {"name": task_name.to_string()};
+    let update = doc! {"$set": {"is_assigned".to_string(): new_val}};
+    coll.update_one(filter, update, None).await.unwrap();
+}
+
+// TODO: make these tests atomic
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -86,7 +132,7 @@ mod tests {
         let coll_name = "test_coll";
 
         create_collection(&client, db_name, coll_name).await;
-        init_state(&client, db_name, coll_name, "test_state", 10, 11).await;
+        init_master_state(&client, db_name, coll_name, "test_state", 10, 11).await;
         assert_eq!(get_val(&client, db_name, coll_name, "test_state", "n_map").await.unwrap(), 10);
         assert_eq!(get_val(&client, db_name, coll_name, "test_state", "n_reduce").await.unwrap(), 11);
 
@@ -102,7 +148,7 @@ mod tests {
         let coll_name = "test_coll";
 
         create_collection(&client, db_name, coll_name).await;
-        init_state(&client, db_name, coll_name, "test_update", 15, 1).await;
+        init_master_state(&client, db_name, coll_name, "test_update", 15, 1).await;
         update_count(&client, db_name, coll_name, "test_update", "n_map", 34).await;
         assert_eq!(get_val(&client, db_name, coll_name, "test_update", "n_map").await.unwrap(), 34);
 

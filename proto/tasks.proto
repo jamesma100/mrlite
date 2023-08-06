@@ -11,8 +11,6 @@ message TaskRequest {
 
 message TaskResponse {
 	string file_name = 1;
-	uint32 task_num = 2;
-	uint32 n_reduce = 3;
-	uint32 n_map = 4;
-	bool is_map = 5;
+	bool is_assigned = 2;
+	bool is_map = 3;
 }
