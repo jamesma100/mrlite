@@ -13,8 +13,6 @@ use std::{env, thread, time};
 use tasks::task_server::{Task, TaskServer};
 use tasks::{TaskRequest, TaskResponse};
 use tonic::{transport::Server, Request, Response, Status};
-
-// Types tonic generated based on proto/tasks.proto
 // so the `use` statements can reference them
 pub mod tasks {
     tonic::include_proto!("tasks");
@@ -48,7 +46,6 @@ impl Task for TaskService {
             let res =
                 mongo_utils::get_task(&client, "mapreduce", "map_tasks", key.as_str().unwrap())
                     .await;
-            println!("res is {:?}", res);
 
             // If not assigned, hand out this task
             if !(res.1.unwrap()) {
@@ -96,8 +93,8 @@ impl Master {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
 
-    let n_map: u32 = FromStr::from_str(&args[1]).unwrap();
-    let n_reduce: u32 = FromStr::from_str(&args[2]).unwrap();
+    let n_map: i64 = FromStr::from_str(&args[1]).unwrap();
+    let n_reduce: i64 = FromStr::from_str(&args[2]).unwrap();
     let mut map_tasks: HashMap<String, (bool, bool)> = HashMap::new();
     let mut reduce_tasks: HashMap<String, (bool, bool)> = HashMap::new();
 
@@ -113,6 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
     let client = Client::with_options(client_options).unwrap();
 
+    mongo_utils::create_collection(&client, "mapreduce", "state").await;
     mongo_utils::init_master_state(
         &client,
         "mapreduce",
@@ -122,6 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         n_reduce,
     )
     .await;
+
     mongo_utils::init_map_tasks(&client, "mapreduce", "map_tasks", &map_tasks).await;
 
     master.boot().await;

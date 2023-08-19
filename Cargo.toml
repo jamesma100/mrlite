@@ -12,6 +12,7 @@ prost = "0.10"  # protobuf impl for rust
 tokio = { version = "1.29.1", features = ["rt-multi-thread"] }
 mongodb = "2.6.0"
 mongo_utils = { path = "mongo_utils" }
+serde = "1.0.171"
 
 [build-dependencies]
 prost-build = "0.10"
