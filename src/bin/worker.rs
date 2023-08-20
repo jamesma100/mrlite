@@ -5,8 +5,10 @@ use mongo_utils::{
 use mongodb::bson::doc;
 use mongodb::{options::ClientOptions, Client};
 use std::collections::hash_map::DefaultHasher;
+use std::fs;
 use std::hash::{Hash, Hasher};
 use std::process;
+use std::process::exit;
 use tasks::task_client::TaskClient;
 use tasks::TaskRequest;
 
@@ -41,8 +43,14 @@ impl Worker {
         // Can also considering making n_map and n_reduce part of the RPC response object
         let client_options = ClientOptions::parse("mongodb://localhost:27017")
             .await
-            .unwrap();
-        let db_client = Client::with_options(client_options).unwrap();
+            .unwrap_or_else(|err| {
+                eprintln!("ERROR: could not parse address: {err}");
+                exit(1)
+            });
+        let db_client = Client::with_options(client_options).unwrap_or_else(|err| {
+            eprintln!("ERROR: could not initialize database client: {err}");
+            exit(1)
+        });
         let db_name = "mapreduce";
         let coll_name = "state";
         let record_name = "current_master_state";

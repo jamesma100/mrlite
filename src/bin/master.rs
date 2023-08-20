@@ -8,6 +8,7 @@ use mongo_utils::{
 use mongodb::bson::doc;
 use mongodb::{options::ClientOptions, Client};
 use std::collections::HashMap;
+use std::process::exit;
 use std::str::FromStr;
 use std::{env, thread, time};
 use tasks::task_server::{Task, TaskServer};
@@ -33,8 +34,14 @@ impl Task for TaskService {
         let addr = "[::1]:50051";
         let client_options = ClientOptions::parse("mongodb://localhost:27017")
             .await
-            .unwrap();
-        let client = Client::with_options(client_options).unwrap();
+            .unwrap_or_else(|err| {
+                eprintln!("ERROR: could not parse address: {err}");
+                exit(1)
+            });
+        let client = Client::with_options(client_options).unwrap_or_else(|err| {
+            eprintln!("ERROR: could not initialize client: {err}");
+            exit(1)
+        });
         let db = client.database("mapreduce");
 
         // Get existing map tasks from database
@@ -107,8 +114,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client_options = ClientOptions::parse("mongodb://localhost:27017")
         .await
-        .unwrap();
-    let client = Client::with_options(client_options).unwrap();
+        .unwrap_or_else(|err| {
+            eprintln!("ERROR: could not parse address: {err}");
+            exit(1)
+        });
+    let client = Client::with_options(client_options).unwrap_or_else(|err| {
+        eprintln!("ERROR: could not initialie client: {err}");
+        exit(1)
+    });
 
     mongo_utils::create_collection(&client, "mapreduce", "state").await;
     mongo_utils::init_master_state(
