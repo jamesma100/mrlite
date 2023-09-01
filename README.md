@@ -3,7 +3,7 @@
 ## tl;dr
 MapReduce allows dividing up large tasks into smaller ones to be run by many workers in parallel.
 MapReduce coordinates the progress shared by workers and the master, which is responsible for assigning tasks, checking to see if workers have died, and keeping track of the state of the entire system.
-Usually MapReduce is implemented for large clusters of machines, but this implementation can run one just one machine!
+Usually MapReduce is implemented for large clusters of machines, but this implementation can run on just one machine!
 
 ## Getting started
 Due to Rust's borrowing and lifetime rules, it is hard to pass around shared state between processes.
