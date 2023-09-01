@@ -1,16 +1,11 @@
 extern crate mongo_utils;
 
-use colored::Colorize;
-use mongo_utils::{
-    create_collection, drop_collection, get_task, get_val, init_map_tasks, init_master_state,
-    update_assigned, update_count,
-};
-use mongodb::bson::doc;
+use mongo_utils::update_assigned;
 use mongodb::{options::ClientOptions, Client};
 use std::collections::HashMap;
+use std::env;
 use std::process::exit;
 use std::str::FromStr;
-use std::{env, thread, time};
 use tasks::task_server::{Task, TaskServer};
 use tasks::{TaskRequest, TaskResponse};
 use tonic::{transport::Server, Request, Response, Status};
@@ -31,7 +26,6 @@ impl Task for TaskService {
         println!("master got a request: {:?}", request);
 
         // Initialize client handler
-        let addr = "[::1]:50051";
         let client_options = ClientOptions::parse("mongodb://localhost:27017")
             .await
             .unwrap_or_else(|err| {
@@ -57,11 +51,12 @@ impl Task for TaskService {
             // If not assigned, hand out this task
             if !(res.1.unwrap()) {
                 let response_filename = &res.0.unwrap();
-                let req = request.into_inner();
+                let tasknum = res.3.unwrap();
                 let reply = TaskResponse {
                     file_name: response_filename.to_string(),
                     is_assigned: false,
                     is_map: true,
+                    tasknum: tasknum,
                 };
                 update_assigned(&client, "mapreduce", "map_tasks", response_filename, true).await;
 
@@ -103,14 +98,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let n_map: i64 = FromStr::from_str(&args[1]).unwrap();
     let n_reduce: i64 = FromStr::from_str(&args[2]).unwrap();
     let mut map_tasks: HashMap<String, (bool, bool)> = HashMap::new();
-    let mut reduce_tasks: HashMap<String, (bool, bool)> = HashMap::new();
+    // let mut reduce_tasks: HashMap<String, (bool, bool)> = HashMap::new();
 
     for i in 3..args.len() {
         map_tasks.insert(args[i].clone(), (false, true));
     }
 
-    let mut master: Master = Master::new("mymaster".to_string());
-    let addr = "[::1]:50051";
+    let master: Master = Master::new("mymaster".to_string());
 
     let client_options = ClientOptions::parse("mongodb://localhost:27017")
         .await
@@ -136,10 +130,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     mongo_utils::init_map_tasks(&client, "mapreduce", "map_tasks", &map_tasks).await;
 
-    master.boot().await;
+    master.boot().await.expect("Could not boot master process.");
 
-    // Poll master every 5 seconds to check completion status
-    let five_seconds = time::Duration::from_millis(5000);
+    // // Poll master every 5 seconds to check completion status
+    // let five_seconds = time::Duration::from_millis(5000);
     // while !master.done() {
     //     println!("master not done!");
     //     thread::sleep(five_seconds);

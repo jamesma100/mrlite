@@ -1,16 +1,16 @@
-use mongo_utils::{
-    create_collection, drop_collection, get_task, get_val, init_map_tasks, init_master_state,
-    update_assigned, update_count,
-};
-use mongodb::bson::doc;
 use mongodb::{options::ClientOptions, Client};
 use std::collections::hash_map::DefaultHasher;
-use std::fs;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::process;
 use std::process::exit;
 use tasks::task_client::TaskClient;
 use tasks::TaskRequest;
+
+use serde_json;
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::BufReader;
 
 pub mod tasks {
     tonic::include_proto!("tasks");
@@ -55,9 +55,6 @@ impl Worker {
         let coll_name = "state";
         let record_name = "current_master_state";
 
-        let n_map = mongo_utils::get_val(&db_client, db_name, coll_name, record_name, "n_map")
-            .await
-            .unwrap();
         let n_reduce =
             mongo_utils::get_val(&db_client, db_name, coll_name, record_name, "n_reduce")
                 .await
@@ -67,17 +64,48 @@ impl Worker {
         // create new request
         let request = tonic::Request::new(TaskRequest { num_tasks: 100 });
 
-        let mut response = client.send_task(request).await?;
+        let response = client.send_task(request).await?;
         println!("RESPONSE={:?}", response);
-        let is_map = response.get_mut().is_map;
+        let is_map = response.get_ref().is_map;
         if is_map {
-            let file_name = &response.get_mut().file_name;
-            let hash = calculate_hash(file_name) % n_reduce as u64;
+            let file_name = &response.get_ref().file_name;
+            let tasknum = &response.get_ref().tasknum;
+            let reduce_tasknum = calculate_hash(file_name) % n_reduce as u64;
             println!("file_name: {}", file_name);
-            println!("hash: {}", hash);
+            println!("reduce_tasknum: {}", reduce_tasknum);
+            println!("map_tasknum: {}", tasknum);
+            map_file(file_name, format!("map-{}-{}", tasknum, reduce_tasknum))
+                .expect("Could not complete map task.");
         }
         Ok(())
     }
+}
+
+fn map_file(filepath: &str, intermediate_filename: String) -> std::io::Result<()> {
+    let file = File::open(filepath)?; // for error handling
+    let mut buf_reader = BufReader::new(file);
+    let mut contents = String::new();
+    buf_reader.read_to_string(&mut contents)?;
+    let kv_pairs = map(&contents);
+    let j = serde_json::to_string(&kv_pairs).unwrap();
+    let mut intermediate_file = File::create(&intermediate_filename)?;
+    intermediate_file.write_all(j.as_bytes())?;
+
+    Ok(())
+}
+
+fn map(contents: &str) -> HashMap<&str, u32> {
+    let mut kv_pairs = HashMap::new();
+    let mut iter = contents.split_whitespace();
+    loop {
+        let word = iter.next();
+        if word == None {
+            break;
+        } else {
+            kv_pairs.insert(word.unwrap(), 1);
+        }
+    }
+    kv_pairs
 }
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
@@ -91,5 +119,5 @@ async fn main() {
     // initialize worker
     let worker_name = format!("{}-{}", "worker", process::id());
     let worker: Worker = Worker::new(worker_name, false);
-    worker.boot().await;
+    worker.boot().await.expect("Could not boot worker process.");
 }

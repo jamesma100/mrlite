@@ -1,5 +1,5 @@
 use mongodb::bson::doc;
-use mongodb::{options::ClientOptions, Client};
+use mongodb::Client;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -29,7 +29,7 @@ pub async fn create_collection(client: &Client, db_name: &str, coll_name: &str) 
 pub async fn drop_collection(client: &Client, db_name: &str, coll_name: &str) {
     let db = client.database(db_name);
     let coll = db.collection::<mongodb::bson::Document>(coll_name);
-    coll.drop(None).await;
+    coll.drop(None).await.expect("Could not drop collection.");
 }
 
 // Initializes master state
@@ -68,12 +68,15 @@ pub async fn init_map_tasks(
     let coll = db.collection::<mongodb::bson::Document>(coll_name);
 
     let mut vec = Vec::new();
-    for (task_name, task_state) in map_tasks {
+    let mut i: i32 = 0;
+    for (task_name, _task_state) in map_tasks {
         vec.push(doc! {
             "name": task_name.to_string(),
             "is_assigned": false,
             "is_map": true,
-        })
+            "tasknum": i,
+        });
+        i += 1;
     }
     coll.insert_many(vec, None).await.unwrap();
 }
@@ -104,7 +107,7 @@ pub async fn get_task(
     db_name: &str,
     coll_name: &str,
     task_name: &str,
-) -> (Option<String>, Option<bool>, Option<bool>) {
+) -> (Option<String>, Option<bool>, Option<bool>, Option<i32>) {
     let db = client.database(db_name);
     let coll = db.collection::<mongodb::bson::Document>(coll_name);
 
@@ -116,8 +119,9 @@ pub async fn get_task(
             Some(task_name.to_string()),
             state.get("is_assigned".to_string()).unwrap().as_bool(),
             state.get("is_map".to_string()).unwrap().as_bool(),
+            state.get("tasknum".to_string()).unwrap().as_i32(),
         ),
-        None => (None, None, None),
+        None => (None, None, None, None),
     }
 }
 

@@ -13,4 +13,5 @@ message TaskResponse {
 	string file_name = 1;
 	bool is_assigned = 2;
 	bool is_map = 3;
+	int32 tasknum = 4;
 }
