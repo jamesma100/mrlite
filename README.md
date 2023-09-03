@@ -1,9 +1,7 @@
-# mapreduce
+# mrlite
 
-## tl;dr
-mrlite allows dividing up large tasks into smaller ones to be run by many workers in parallel.
-mrlite coordinates the progress shared by workers and the master, which is responsible for assigning tasks, checking to see if workers have died, and keeping track of the state of the entire system.
-Usually MapReduce is implemented for large clusters of machines, but mrlite can run on just one machine!
+mrlite is a [light]weight implementation of [M]ap[R]educe that runs on a machine by utilizing multiple cores. 
+mrlite allows dividing up large tasks into smaller ones to be run by many workers in parallel, while coordinating them using a single master node.
 
 ## Getting started
 Due to Rust's borrowing and lifetime rules, it is hard to pass around shared state between processes.
@@ -26,3 +24,4 @@ cargo run --bin worker
 ```
 You can run as many worker processes as there are available tasks.
 They should be able to safely run in parallel.
+
