@@ -23,10 +23,7 @@ pub struct Worker {
 }
 impl Worker {
     pub fn new(id: u32, done: bool) -> Worker {
-        Worker {
-            id: id,
-            done: done,
-        }
+        Worker { id: id, done: done }
     }
     pub fn get_id(&self) -> u32 {
         self.id
@@ -65,7 +62,7 @@ impl Worker {
 
         let mut client = TaskClient::connect("http://[::1]:50051").await?;
         // create new request
-        let request = tonic::Request::new(TaskRequest { num_tasks: 100 });
+        let request = tonic::Request::new(TaskRequest { id: process::id() });
 
         let response = client.send_task(request).await?;
         println!("RESPONSE={:?}", response);
@@ -119,5 +116,8 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 async fn main() {
     // Initialize worker
     let worker: Worker = Worker::new(process::id(), false);
-    worker.boot().await.expect("ERROR: Could not boot worker process.");
+    worker
+        .boot()
+        .await
+        .expect("ERROR: Could not boot worker process.");
 }

@@ -22,7 +22,10 @@ impl Task for TaskService {
         &self,
         request: Request<TaskRequest>,
     ) -> Result<Response<TaskResponse>, Status> {
-        println!("DEBUG: Master got a request: {:?}", request);
+        println!(
+            "DEBUG: Master got a request from worker {}",
+            request.get_ref().id
+        );
 
         // Initialize client handler
         let client_options = ClientOptions::parse("mongodb://localhost:27017")
@@ -132,7 +135,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     mongo_utils::init_map_tasks(&client, "mapreduce", "map_tasks", &map_tasks).await;
 
-    master.boot().await.expect("ERROR: Could not boot master process.");
+    master
+        .boot()
+        .await
+        .expect("ERROR: Could not boot master process.");
 
     // // Poll master every 5 seconds to check completion status
     // let five_seconds = time::Duration::from_millis(5000);

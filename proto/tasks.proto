@@ -6,7 +6,7 @@ service Task {
 }
 
 message TaskRequest {
-	uint32 num_tasks = 1;	
+	uint32 id = 1;
 }
 
 message TaskResponse {
