@@ -18,22 +18,25 @@ pub mod tasks {
 
 #[derive(Debug)]
 pub struct Worker {
-    name: String,
+    id: u32,
     done: bool,
 }
 impl Worker {
-    pub fn new(name: String, done: bool) -> Worker {
+    pub fn new(id: u32, done: bool) -> Worker {
         Worker {
-            name: name,
+            id: id,
             done: done,
         }
+    }
+    pub fn get_id(&self) -> u32 {
+        self.id
     }
     pub fn done(&self) -> bool {
         self.done
     }
 
     pub async fn boot(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("worker boot called");
+        println!("DEBUG: Worker boot called");
 
         // Retrieve some information about the current master state that the workers
         // share. This seems kinda expensive since we are initializing a new
@@ -71,17 +74,15 @@ impl Worker {
             let file_name = &response.get_ref().file_name;
             let tasknum = &response.get_ref().tasknum;
             let reduce_tasknum = calculate_hash(file_name) % n_reduce as u64;
-            println!("file_name: {}", file_name);
-            println!("reduce_tasknum: {}", reduce_tasknum);
-            println!("map_tasknum: {}", tasknum);
             map_file(file_name, format!("map-{}-{}", tasknum, reduce_tasknum))
-                .expect("Could not complete map task.");
+                .expect("ERROR: Could not complete map task.");
         }
         Ok(())
     }
 }
 
 fn map_file(filepath: &str, intermediate_filename: String) -> std::io::Result<()> {
+    // Open file, call map function on its contents, and write results to disk
     let file = File::open(filepath)?; // for error handling
     let mut buf_reader = BufReader::new(file);
     let mut contents = String::new();
@@ -116,8 +117,7 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 
 #[tokio::main]
 async fn main() {
-    // initialize worker
-    let worker_name = format!("{}-{}", "worker", process::id());
-    let worker: Worker = Worker::new(worker_name, false);
-    worker.boot().await.expect("Could not boot worker process.");
+    // Initialize worker
+    let worker: Worker = Worker::new(process::id(), false);
+    worker.boot().await.expect("ERROR: Could not boot worker process.");
 }

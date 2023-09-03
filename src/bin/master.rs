@@ -9,7 +9,6 @@ use std::str::FromStr;
 use tasks::task_server::{Task, TaskServer};
 use tasks::{TaskRequest, TaskResponse};
 use tonic::{transport::Server, Request, Response, Status};
-// so the `use` statements can reference them
 pub mod tasks {
     tonic::include_proto!("tasks");
 }
@@ -23,7 +22,7 @@ impl Task for TaskService {
         &self,
         request: Request<TaskRequest>,
     ) -> Result<Response<TaskResponse>, Status> {
-        println!("master got a request: {:?}", request);
+        println!("DEBUG: Master got a request: {:?}", request);
 
         // Initialize client handler
         let client_options = ClientOptions::parse("mongodb://localhost:27017")
@@ -72,12 +71,15 @@ impl Task for TaskService {
 }
 
 #[derive(Debug)]
-pub struct Master {
-    name: String,
+pub struct Master<'a> {
+    name: &'a str,
 }
-impl Master {
-    pub fn new(name: String) -> Master {
+impl Master<'_> {
+    pub fn new(name: &str) -> Master {
         Master { name: name }
+    }
+    pub fn get_name(&self) -> &str {
+        self.name
     }
     pub async fn boot(&self) -> Result<(), Box<dyn std::error::Error>> {
         let addr = "[::1]:50051".parse()?;
@@ -104,7 +106,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         map_tasks.insert(args[i].clone(), (false, true));
     }
 
-    let master: Master = Master::new("mymaster".to_string());
+    let master: Master = Master::new("mymaster");
 
     let client_options = ClientOptions::parse("mongodb://localhost:27017")
         .await
@@ -130,7 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     mongo_utils::init_map_tasks(&client, "mapreduce", "map_tasks", &map_tasks).await;
 
-    master.boot().await.expect("Could not boot master process.");
+    master.boot().await.expect("ERROR: Could not boot master process.");
 
     // // Poll master every 5 seconds to check completion status
     // let five_seconds = time::Duration::from_millis(5000);
