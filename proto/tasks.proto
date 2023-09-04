@@ -1,17 +1,27 @@
 syntax = "proto3";
 package tasks;
 
+/*
+ * RPC service representing server (master node) - client (worker node) interactions
+ */
 service Task {
 	rpc SendTask (TaskRequest) returns (TaskResponse);
 }
 
+/*
+ * Request for a task by a worker
+ */
 message TaskRequest {
-	uint32 id = 1;
+	uint32 id = 1;        // process id of the client issuing the request
 }
 
+/*
+ * Response from the master node representing a task assignment to the worker
+ */
 message TaskResponse {
-	string file_name = 1;
-	bool is_assigned = 2;
-	bool is_map = 3;
-	int32 tasknum = 4;
+	string task_name = 1; // name of file for map tasks, task num for reduce tasks
+	bool is_assigned = 2; // whether a task has been assigned to a worker
+	bool is_map = 3;      // true if map task, false if reduce task
+	int32 tasknum = 4;    // task num for map tasks, no-op -1 for reduce tasks
+	bool done = 5;        // whether a worker has completed the task
 }

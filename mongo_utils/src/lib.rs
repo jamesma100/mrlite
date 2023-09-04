@@ -57,24 +57,26 @@ pub async fn init_master_state(
     .unwrap();
 }
 
-// Initializes map tasks state
-pub async fn init_map_tasks(
+// Initializes map and reduce tasks state (requires one call for each)
+pub async fn init_tasks(
     client: &Client,
     db_name: &str,
     coll_name: &str,
-    map_tasks: &HashMap<String, (bool, bool)>,
+    tasks: &HashMap<String, (bool, bool)>,
 ) {
     let db = client.database(db_name);
     let coll = db.collection::<mongodb::bson::Document>(coll_name);
 
     let mut vec = Vec::new();
-    let mut i: i32 = 0;
-    for (task_name, _task_state) in map_tasks {
+    let mut i = 0;
+    for (task_name, task_state) in tasks {
+        let tasknum = if task_state.1 { i } else { -1 };
         vec.push(doc! {
             "name": task_name.to_string(),
-            "is_assigned": false,
-            "is_map": true,
-            "tasknum": i,
+            "is_assigned": task_state.0,
+            "is_map": task_state.1,
+            "tasknum": tasknum,
+            "done": false,
         });
         i += 1;
     }
@@ -107,7 +109,13 @@ pub async fn get_task(
     db_name: &str,
     coll_name: &str,
     task_name: &str,
-) -> (Option<String>, Option<bool>, Option<bool>, Option<i32>) {
+) -> (
+    Option<String>,
+    Option<bool>,
+    Option<bool>,
+    Option<i32>,
+    Option<bool>,
+) {
     let db = client.database(db_name);
     let coll = db.collection::<mongodb::bson::Document>(coll_name);
 
@@ -120,8 +128,9 @@ pub async fn get_task(
             state.get("is_assigned".to_string()).unwrap().as_bool(),
             state.get("is_map".to_string()).unwrap().as_bool(),
             state.get("tasknum".to_string()).unwrap().as_i32(),
+            state.get("done".to_string()).unwrap().as_bool(),
         ),
-        None => (None, None, None, None),
+        None => (None, None, None, None, None),
     }
 }
 
@@ -155,6 +164,22 @@ pub async fn update_assigned(
 
     let filter = doc! {"name": task_name.to_string()};
     let update = doc! {"$set": {"is_assigned".to_string(): new_val}};
+    coll.update_one(filter, update, None).await.unwrap();
+}
+
+// Updates done value of some task
+pub async fn update_done(
+    client: &Client,
+    db_name: &str,
+    coll_name: &str,
+    task_name: &str,
+    new_val: bool,
+) {
+    let db = client.database(db_name);
+    let coll = db.collection::<mongodb::bson::Document>(coll_name);
+
+    let filter = doc! {"name": task_name.to_string()};
+    let update = doc! {"$set": {"done".to_string(): new_val}};
     coll.update_one(filter, update, None).await.unwrap();
 }
 

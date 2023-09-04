@@ -45,20 +45,27 @@ impl Task for TaskService {
 
         // Loop over all tasks looking for an idle one to assign
         let distinct = coll.distinct("name", None, None).await;
+
+        let mut map_phase_done = true;
         for key in distinct.unwrap() {
             let res =
                 mongo_utils::get_task(&client, "mapreduce", "map_tasks", key.as_str().unwrap())
                     .await;
 
+            // If a single map task is not done, set a flag to indicate map phase unfinished
+            if !(res.4.unwrap()) {
+                map_phase_done = false;
+            }
             // If not assigned, hand out this task
             if !(res.1.unwrap()) {
                 let response_filename = &res.0.unwrap();
                 let tasknum = res.3.unwrap();
                 let reply = TaskResponse {
-                    file_name: response_filename.to_string(),
+                    task_name: response_filename.to_string(),
                     is_assigned: false,
                     is_map: true,
                     tasknum: tasknum,
+                    done: false,
                 };
                 update_assigned(&client, "mapreduce", "map_tasks", response_filename, true).await;
 
@@ -68,8 +75,45 @@ impl Task for TaskService {
             }
         }
 
+        if !map_phase_done {
+            return Err(Status::not_found(
+                "Reduce tasks avaiable but map phase still pending.",
+            ));
+        } else {
+            let coll = db.collection::<mongodb::bson::Document>("reduce_tasks");
+            let distinct = coll.distinct("name", None, None).await;
+            for key in distinct.unwrap() {
+                let res = mongo_utils::get_task(
+                    &client,
+                    "mapreduce",
+                    "reduce_tasks",
+                    key.as_str().unwrap(),
+                )
+                .await;
+
+                if !(res.1.unwrap()) {
+                    let response_tasknum = &res.0.unwrap();
+                    let tasknum = res.3.unwrap();
+                    let reply = TaskResponse {
+                        // file_name is a no-op for reduce tasks, as we use the reduce task num
+                        task_name: response_tasknum.to_string(),
+                        is_assigned: false,
+                        is_map: false,
+                        tasknum: tasknum,
+                        done: false,
+                    };
+
+                    update_assigned(&client, "mapreduce", "reduce_tasks", response_tasknum, true)
+                        .await;
+                    return Ok(Response::new(reply));
+                } else {
+                    continue;
+                }
+            }
+        }
+
         // No avaialble tasks found; either mapreduce is done or all map tasks are still in progress
-        return Err(Status::not_found("No valid task found."));
+        return Err(Status::not_found("MapReduce is complete."));
     }
 }
 
@@ -103,10 +147,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let n_map: i64 = FromStr::from_str(&args[1]).unwrap();
     let n_reduce: i64 = FromStr::from_str(&args[2]).unwrap();
     let mut map_tasks: HashMap<String, (bool, bool)> = HashMap::new();
-    // let mut reduce_tasks: HashMap<String, (bool, bool)> = HashMap::new();
+    let mut reduce_tasks: HashMap<String, (bool, bool)> = HashMap::new();
 
+    // Map tasks are identified by their file name
     for i in 3..args.len() {
         map_tasks.insert(args[i].clone(), (false, true));
+    }
+
+    // Reduce tasks are identified by their reduce task num
+    for i in 0..n_reduce {
+        reduce_tasks.insert(i.to_string(), (false, false));
     }
 
     let master: Master = Master::new("mymaster");
@@ -118,7 +168,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             exit(1)
         });
     let client = Client::with_options(client_options).unwrap_or_else(|err| {
-        eprintln!("ERROR: could not initialie client: {err}");
+        eprintln!("ERROR: could not initialize client: {err}");
         exit(1)
     });
 
@@ -133,7 +183,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .await;
 
-    mongo_utils::init_map_tasks(&client, "mapreduce", "map_tasks", &map_tasks).await;
+    mongo_utils::init_tasks(&client, "mapreduce", "map_tasks", &map_tasks).await;
+    mongo_utils::init_tasks(&client, "mapreduce", "reduce_tasks", &reduce_tasks).await;
 
     master
         .boot()
