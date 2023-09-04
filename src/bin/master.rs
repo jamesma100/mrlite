@@ -64,7 +64,7 @@ impl Task for TaskService {
                     task_name: response_filename.to_string(),
                     is_assigned: false,
                     is_map: true,
-                    tasknum: tasknum,
+                    tasknum,
                     done: false,
                 };
                 update_assigned(&client, "mapreduce", "map_tasks", response_filename, true).await;
@@ -99,7 +99,7 @@ impl Task for TaskService {
                         task_name: response_tasknum.to_string(),
                         is_assigned: false,
                         is_map: false,
-                        tasknum: tasknum,
+                        tasknum,
                         done: false,
                     };
 
@@ -123,7 +123,7 @@ pub struct Master<'a> {
 }
 impl Master<'_> {
     pub fn new(name: &str) -> Master {
-        Master { name: name }
+        Master { name }
     }
     pub fn get_name(&self) -> &str {
         self.name

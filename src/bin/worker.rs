@@ -7,7 +7,7 @@ use tasks::task_client::TaskClient;
 use tasks::TaskRequest;
 
 use serde::Serialize;
-use serde_json;
+
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
@@ -26,7 +26,7 @@ pub struct Worker {
 }
 impl Worker {
     pub fn new(id: u32, done: bool) -> Worker {
-        Worker { id: id, done: done }
+        Worker { id, done }
     }
     pub fn get_id(&self) -> u32 {
         self.id
@@ -137,7 +137,7 @@ fn map_file(filepath: &str, intermediate_filename: String) -> std::io::Result<()
     let mut contents = String::new();
     buf_reader.read_to_string(&mut contents)?;
     let kv_pairs = map(&contents);
-    let mut intermediate_file = File::create(&intermediate_filename)?;
+    let mut intermediate_file = File::create(intermediate_filename)?;
     let json = serde_json::to_string(&kv_pairs)?;
     intermediate_file.write_all(json.as_bytes())?;
 
@@ -149,7 +149,7 @@ fn map(contents: &str) -> Vec<KVPair> {
     let mut iter = contents.split_whitespace();
     loop {
         let word = iter.next();
-        if word == None {
+        if word.is_none() {
             break;
         } else {
             kv_pairs.push(KVPair {
