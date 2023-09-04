@@ -1,7 +1,7 @@
 # mrlite
 
-mrlite is a [light]weight implementation of [M]ap[R]educe that runs on a machine by utilizing multiple cores. 
-mrlite allows dividing up large tasks into smaller ones to be run by many workers in parallel, while coordinating them using a single master node.
+__mrlite__ is a [light]weight implementation of [M]ap[R]educe that runs on a single machine by utilizing multiple cores. 
+__mrlite__ allows dividing up large tasks into smaller ones to be run by many workers in parallel, while coordinating them using a master node.
 
 ## Getting started
 Due to Rust's borrowing and lifetime rules, it is hard to pass around shared state between processes.
@@ -15,7 +15,7 @@ mongod --dbpath /tmp/mongo-testdb
 
 Then, we can start a master process:
 ```
-cargo run --bin master <num map tasks> <num reduce tasks> <filename1> <filename2> <filename3>
+cargo run --bin master <n_map> <n_reduce> <filename1> <filename2> <filename3>
 ```
 
 In a separate terminal, start a worker process:
@@ -25,3 +25,5 @@ cargo run --bin worker
 You can run as many worker processes as there are available tasks.
 They should be able to safely run in parallel.
 
+When the entire MapReduce job is complete, you should see your output stored in `n_reduce` files named `out-<i>` where `i` is between 0 and `n_reduce`-1.
+You will also see many `map-<x>-<y>` files, which are the intermediate files written during the map phase - you can ignore those.
