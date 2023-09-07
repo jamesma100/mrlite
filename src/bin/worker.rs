@@ -1,19 +1,15 @@
 use mongodb::{options::ClientOptions, Client};
+use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;
+use std::fs::File;
 use std::hash::{Hash, Hasher};
+use std::io::prelude::*;
+use std::io::{BufReader, LineWriter, Read};
+use std::path::Path;
 use std::process;
 use std::process::exit;
 use tasks::task_client::TaskClient;
 use tasks::TaskRequest;
-
-use serde::Serialize;
-
-use std::fs::File;
-use std::io::prelude::*;
-use std::io::BufReader;
-use std::io::LineWriter;
-use std::io::Read;
-use std::path::Path;
 
 pub mod tasks {
     tonic::include_proto!("tasks");
@@ -36,8 +32,6 @@ impl Worker {
     }
 
     pub async fn boot(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("DEBUG: Worker boot called");
-
         // Retrieve some information about the current master state that the workers
         // share. This seems kinda expensive since we are initializing a new
         // database connection per request we serve - it would be nice if these
@@ -69,12 +63,14 @@ impl Worker {
         let mut client = TaskClient::connect("http://[::1]:50051").await?;
         // create new request
         let request = tonic::Request::new(TaskRequest { id: process::id() });
-
         let response = client.send_task(request).await?;
+
         println!("RESPONSE={:?}", response);
+
         let is_map = response.get_ref().is_map;
         let task_name = &response.get_ref().task_name;
         let reduce_tasknum = calculate_hash(task_name) % n_reduce as u64;
+
         if is_map {
             let tasknum = &response.get_ref().tasknum;
             map_file(task_name, format!("map-{}-{}", tasknum, reduce_tasknum))
@@ -85,34 +81,40 @@ impl Worker {
             for i in 0..n_map {
                 let intermediate_filename = format!("map-{}-{}", i, task_name);
                 let path = Path::new(&intermediate_filename);
+
                 if path.exists() {
                     let f = File::open(intermediate_filename)
                         .expect("ERROR: File should open read only");
                     let json: serde_json::Value =
                         serde_json::from_reader(f).expect("file should be proper JSON");
-
                     let mut kv_pairs = Vec::new();
+
                     for j in json.as_array().unwrap() {
-                        //println!("word: {}, count: {}", j["word"], j["count"]);
                         kv_pairs.push(KVPair {
                             key: j["key"].as_str().unwrap().to_string(),
                             val: j["val"].as_u64().unwrap(),
                         });
                     }
                     kv_pairs.sort();
+
                     let len = kv_pairs.len();
                     let file = File::create(format!("out-{}", task_name))?;
                     let mut file = LineWriter::new(file);
                     let mut i = 0;
+
+                    // Now that the key value pairs are sorted, we can easily coalesce adjacent
+                    // pairs if they are equivalent
                     while i < len {
                         let mut j = i + 1;
                         while j < len && kv_pairs[j].key == kv_pairs[i].key {
                             j += 1;
                         }
                         let mut vals = Vec::new();
+
                         for k in i..j {
                             vals.push(kv_pairs[k].val);
                         }
+
                         let count = reduce(kv_pairs[i].key.clone(), vals);
                         file.write_all(format!("{} {}\n", kv_pairs[i].key, count).as_bytes())?;
                         i = j;
@@ -130,20 +132,24 @@ pub struct KVPair {
     val: u64,
 }
 
+// Open file, call map function on its contents, and write results to disk
 fn map_file(filepath: &str, intermediate_filename: String) -> std::io::Result<()> {
-    // Open file, call map function on its contents, and write results to disk
     let file = File::open(filepath)?; // for error handling
     let mut buf_reader = BufReader::new(file);
     let mut contents = String::new();
+
     buf_reader.read_to_string(&mut contents)?;
+
     let kv_pairs = map(&contents);
     let mut intermediate_file = File::create(intermediate_filename)?;
     let json = serde_json::to_string(&kv_pairs)?;
+
     intermediate_file.write_all(json.as_bytes())?;
 
     Ok(())
 }
 
+// User defined map function goes here
 fn map(contents: &str) -> Vec<KVPair> {
     let mut kv_pairs = Vec::new();
     let mut iter = contents.split_whitespace();
@@ -161,6 +167,7 @@ fn map(contents: &str) -> Vec<KVPair> {
     kv_pairs
 }
 
+// User defined reduce function goes here
 fn reduce(_key: String, vals: Vec<u64>) -> u64 {
     let mut total = 0;
     for val in vals {

@@ -9,9 +9,15 @@ use std::str::FromStr;
 use tasks::task_server::{Task, TaskServer};
 use tasks::{TaskRequest, TaskResponse};
 use tonic::{transport::Server, Request, Response, Status};
+
 pub mod tasks {
     tonic::include_proto!("tasks");
 }
+
+static DB_NAME: &str = "mapreduce";
+static MAP_TASKS_COLL: &str = "map_tasks";
+static REDUCE_TASKS_COLL: &str = "reduce_tasks";
+static MONGO_HOST: &str = "mongodb://localhost:27017";
 
 #[derive(Debug, Default)]
 pub struct TaskService {}
@@ -28,7 +34,7 @@ impl Task for TaskService {
         );
 
         // Initialize client handler
-        let client_options = ClientOptions::parse("mongodb://localhost:27017")
+        let client_options = ClientOptions::parse(MONGO_HOST)
             .await
             .unwrap_or_else(|err| {
                 eprintln!("ERROR: could not parse address: {err}");
@@ -38,10 +44,10 @@ impl Task for TaskService {
             eprintln!("ERROR: could not initialize client: {err}");
             exit(1)
         });
-        let db = client.database("mapreduce");
+        let db = client.database(DB_NAME);
 
         // Get existing map tasks from database
-        let coll = db.collection::<mongodb::bson::Document>("map_tasks");
+        let coll = db.collection::<mongodb::bson::Document>(MAP_TASKS_COLL);
 
         // Loop over all tasks looking for an idle one to assign
         let distinct = coll.distinct("name", None, None).await;
@@ -49,7 +55,7 @@ impl Task for TaskService {
         let mut map_phase_done = true;
         for key in distinct.unwrap() {
             let res =
-                mongo_utils::get_task(&client, "mapreduce", "map_tasks", key.as_str().unwrap())
+                mongo_utils::get_task(&client, DB_NAME, MAP_TASKS_COLL, key.as_str().unwrap())
                     .await;
 
             // If a single map task is not done, set a flag to indicate map phase unfinished
@@ -67,11 +73,9 @@ impl Task for TaskService {
                     tasknum,
                     done: false,
                 };
-                update_assigned(&client, "mapreduce", "map_tasks", response_filename, true).await;
 
+                update_assigned(&client, DB_NAME, MAP_TASKS_COLL, response_filename, true).await;
                 return Ok(Response::new(reply));
-            } else {
-                continue;
             }
         }
 
@@ -80,13 +84,14 @@ impl Task for TaskService {
                 "Reduce tasks avaiable but map phase still pending.",
             ));
         } else {
-            let coll = db.collection::<mongodb::bson::Document>("reduce_tasks");
+            let coll = db.collection::<mongodb::bson::Document>(REDUCE_TASKS_COLL);
             let distinct = coll.distinct("name", None, None).await;
+
             for key in distinct.unwrap() {
                 let res = mongo_utils::get_task(
                     &client,
-                    "mapreduce",
-                    "reduce_tasks",
+                    DB_NAME,
+                    REDUCE_TASKS_COLL,
                     key.as_str().unwrap(),
                 )
                 .await;
@@ -103,11 +108,9 @@ impl Task for TaskService {
                         done: false,
                     };
 
-                    update_assigned(&client, "mapreduce", "reduce_tasks", response_tasknum, true)
+                    update_assigned(&client, DB_NAME, REDUCE_TASKS_COLL, response_tasknum, true)
                         .await;
                     return Ok(Response::new(reply));
-                } else {
-                    continue;
                 }
             }
         }
@@ -161,7 +164,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let master: Master = Master::new("mymaster");
 
-    let client_options = ClientOptions::parse("mongodb://localhost:27017")
+    let client_options = ClientOptions::parse(MONGO_HOST)
         .await
         .unwrap_or_else(|err| {
             eprintln!("ERROR: could not parse address: {err}");
@@ -172,10 +175,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         exit(1)
     });
 
-    mongo_utils::create_collection(&client, "mapreduce", "state").await;
+    mongo_utils::create_collection(&client, DB_NAME, "state").await;
     mongo_utils::init_master_state(
         &client,
-        "mapreduce",
+        DB_NAME,
         "state",
         "current_master_state",
         n_map,
@@ -183,15 +186,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .await;
 
-    mongo_utils::init_tasks(&client, "mapreduce", "map_tasks", &map_tasks).await;
-    mongo_utils::init_tasks(&client, "mapreduce", "reduce_tasks", &reduce_tasks).await;
+    mongo_utils::init_tasks(&client, DB_NAME, MAP_TASKS_COLL, &map_tasks).await;
+    mongo_utils::init_tasks(&client, DB_NAME, REDUCE_TASKS_COLL, &reduce_tasks).await;
 
     master
         .boot()
         .await
         .expect("ERROR: Could not boot master process.");
 
-    // // Poll master every 5 seconds to check completion status
+    // // TODO: Poll master every 5 seconds to check completion status
     // let five_seconds = time::Duration::from_millis(5000);
     // while !master.done() {
     //     println!("master not done!");
